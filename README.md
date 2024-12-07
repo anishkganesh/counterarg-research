@@ -1,4 +1,4 @@
-# counterarg
+# counterarg.
 
 # Counter Research Generation from arXiv Data
 
