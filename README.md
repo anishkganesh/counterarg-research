@@ -1,127 +1,96 @@
-# counterarg.
+# Counterarg
 
-# Counter Research Generation from arXiv Data
+Research prototypes for finding potentially opposing evidence in arXiv papers and generating a counterargument to a supplied statement.
 
-## Table of Contents
-1. [Project Overview](#project-overview)
-2. [Core Concept](#core-concept)
-3. [System Architecture](#system-architecture)
-4. [Detailed Steps](#detailed-steps)
-5. [Requirements & Setup](#requirements--setup)
-6. [Usage](#usage)
-7. [Methodological Considerations](#methodological-considerations)
-8. [Performance & Scalability Considerations](#performance--scalability-considerations)
-9. [Limitations & Future Work](#limitations--future-work)
-10. [License & Compliance](#license--compliance)
+## Overview
 
----
+This repository contains two distinct approaches: a notebook that combines local semantic embeddings with sentiment filtering, and a Python script that uses OpenAI embeddings, stance classification, PDF retrieval, and generation. It is an experimental research workflow, not a hosted application or a validated fact-checking system.
 
-## Project Overview
+## Features
 
-This repository provides a pipeline that, given a piece of input research content—ranging from a single paragraph to an entire paper abstract—attempts to generate a well-evidenced counterargument. It leverages a large corpus of arXiv abstracts to find countering perspectives and uses a Large Language Model (LLM) to synthesize a counter-research narrative supported by actual scholarly sources.
+- Read the arXiv metadata dataset distributed through Kaggle.
+- Build an in-memory FAISS index for semantic retrieval.
+- Retrieve candidate papers for a query or statement.
+- Filter notebook results using a sentiment model.
+- In the script, classify candidates as supporting, refuting, or neutral, download selected PDFs, and generate a response from extracted text.
 
-In short, if you supply a claim such as "Quantum entanglement has no significant impact on classical computation," the system will:
+## Architecture
 
-1. Retrieve thematically relevant documents from a massive corpus of arXiv abstracts.
-2. Identify which of these documents might refute the claim.
-3. Download the full PDF texts of those refuting documents from arxiv.org.
-4. Provide the LLM with this evidence so it can construct a factual, evidence-based counterargument.
-5. If no strong contradictory evidence is found, it will refrain from fabricating a counterargument.
+| Implementation | Retrieval and filtering | Output |
+| --- | --- | --- |
+| `counter_research.ipynb` | SentenceTransformer `all-mpnet-base-v2`, FAISS, CardiffNLP sentiment pipeline | Exploratory paper retrieval and opposite-sentiment filtering |
+| `counterarg.py` | OpenAI `text-embedding-ada-002`, FAISS inner-product index, GPT-4 stance prompts | A generated counterargument or `None` when evidence is unavailable |
 
----
+The script embeds metadata records, retrieves candidates, checks their stance, downloads selected papers, extracts text with PyPDF2, and sends source excerpts to a language model. Only a limited excerpt from each retrieved source is used for generation.
 
-## Core Concept
+Different sentiment does not establish logical contradiction. Likewise, a model-generated stance label or counterargument does not prove a claim false.
 
-**Goal:** To produce counter-research content that challenges a given claim or viewpoint using actual scholarly papers as evidence.
+## Tech stack
 
-**Key Idea:**  
-1. **Relevance:** Identify relevant literature using vector embeddings and similarity search.
-2. **Refutation Detection:** Determine which documents truly present a contradicting stance.
-3. **Grounded Generation:** Equip the LLM with authentic source material to ensure that the counterargument is not a hallucination but an informed, evidence-based standpoint.
-4. **Honest Failure:** If no sufficient evidence is found, the system admits it instead of making something up.
+Python, Jupyter, pandas, NumPy, FAISS, Sentence Transformers, Hugging Face Transformers, Kaggle, OpenAI, Requests, Beautiful Soup, PyPDF2, scikit-learn, and tqdm.
 
----
+## Project structure
 
-## System Architecture
+- `counter_research.ipynb` — local-model retrieval experiment.
+- `counterarg.py` — API-assisted retrieval and counterargument pipeline.
 
-1. **Data Source (arXiv Metadata):**  
-   - A dataset of ~1.7 million arXiv abstracts (as provided by the Cornell University dataset on Kaggle).
-   - Each record includes an `id`, `authors`, `title`, `categories`, and `abstract`.
+No dependency manifest, web server, persisted FAISS index, or automated test suite is included.
 
-2. **Embeddings & Vector Store (FAISS):**  
-   - Documents are embedded into high-dimensional vectors using OpenAI’s `text-embedding-ada-002`.
-   - A FAISS index efficiently retrieves the most semantically similar documents to a given query or input chunk.
+## Run locally
 
-3. **Stance Detection with LLM:**  
-   - For each retrieved abstract, the system queries the LLM to determine if it "refutes," "supports," or is "neutral" toward the input claim.
-   - Only refuting abstracts are selected for deeper analysis.
+Clone the repository and create a Python virtual environment. Activate it using the command appropriate to your shell.
 
-4. **Full Text Retrieval (PDF Download):**  
-   - Using the `id` from the metadata, the system downloads the full PDF from `arxiv.org/pdf/<id>.pdf`.
-   - Extracts textual content from the PDF for richer evidence.
-
-5. **Counterargument Generation (LLM):**  
-   - The LLM is given the input claim and a compilation of texts from refuting PDFs.
-   - It attempts to synthesize these sources into a coherent counterargument.
-   - If insufficient evidence is present, it outputs "No valid counterargument found."
-
----
-
-## Detailed Steps
-
-**Step 1: Data Acquisition**
-- Use Kaggle CLI or API to download `arxiv-metadata-oai-snapshot.json`.
-- Load this large JSON-lines file into a Pandas DataFrame.
-
-**Step 2: Preprocessing**
-- Extract essential columns: `id`, `authors`, `title`, `categories`, and `abstract`.
-- Optionally, filter the dataset by categories or random sampling for demonstration (the full dataset is large and may require substantial compute resources).
-
-**Step 3: Embeddings & Indexing**
-- Convert each record into a descriptive text block: `Title, Authors, Categories, Abstract`.
-- Use OpenAI’s embedding model to produce a vector embedding for each text block.
-- Store these embeddings in memory or on disk and index them with FAISS for similarity queries.
-
-**Step 4: Query Processing & Chunking**
-- Input text is split into manageable chunks (for instance, a 2,000-character limit) to handle very long inputs.
-- Each chunk is embedded and used as a query against the FAISS index to retrieve top-K similar abstracts.
-
-**Step 5: Stance Detection**
-- For each candidate abstract:
-  - Prompt the LLM (e.g., GPT-4) with the input chunk and the candidate abstract.
-  - Ask it to classify the stance: refutes, supports, or neutral.
-  - Collect only those abstracts classified as "refutes" for the next step.
-
-**Step 6: Evidence Gathering**
-- For each refuting abstract:
-  - Construct the PDF URL: `https://arxiv.org/pdf/<id>.pdf`.
-  - Download the PDF and extract text using PyPDF2.
-  - Accumulate these texts as source material for the final generation step.
-
-**Step 7: Counterargument Generation**
-- Combine all refuting PDF texts into a prompt.
-- Instruct the LLM to produce a careful, accurate counterargument using only evidence from these sources.
-- If no evidence is found or it is insufficient, instruct the model to state "No valid counterargument found."
-
----
-
-## Requirements & Setup
-
-**Software:**
-- Python 3.7+
-- Packages:
-  - `pandas` for data handling
-  - `requests` for HTTP requests (downloading PDFs)
-  - `PyPDF2` for PDF text extraction
-  - `faiss-cpu` for vector indexing and similarity search
-  - `openai` for LLM and embedding API calls
-  - `tqdm` for progress indication
-  - `beautifulsoup4` (optional, if HTML parsing is needed)
-  
-**External Services:**
-- **Kaggle:** Obtain an API token (kaggle.json) and place it in `~/.kaggle`.
-- **OpenAI API Key:** Set `openai.api_key` or use an environment variable `OPENAI_API_KEY`.
-
-**Installation:**
 ```bash
-pip install pandas requests PyPDF2 faiss-cpu openai tqdm beautifulsoup4
+git clone https://github.com/anishkganesh/counterarg.git
+cd counterarg
+python -m venv .venv
+pip install jupyter pandas numpy faiss-cpu sentence-transformers transformers torch kaggle
+jupyter notebook counter_research.ipynb
+```
+
+For the standalone script, install its additional dependencies:
+
+```bash
+pip install requests PyPDF2 scikit-learn tqdm beautifulsoup4 'openai<1'
+```
+
+The script uses the legacy pre-1.0 OpenAI Python interface. Installing a current SDK without adapting the code is not compatible with these calls. Model availability and provider access must be checked in your own account.
+
+## Configuration and data
+
+Configure Kaggle credentials locally and obtain the `Cornell-University/arxiv` dataset. The workflow expects `arxiv-metadata-oai-snapshot.json` in the working location used by the code.
+
+`counterarg.py` contains an inline OpenAI key assignment. For a local run, replace that assignment with your own securely managed credential; exporting an environment variable alone does not override it. Do not reuse or redistribute a committed credential.
+
+The script currently uses the full loaded metadata dataset, not the commented-out small sample. Index construction can consume substantial memory, time, and paid embedding requests. Review dataset size and the module-level execution before running it.
+
+## Usage
+
+The notebook is intended to be run cell by cell. Inspect intermediate retrieval and sentiment results rather than treating the final result as established evidence.
+
+The script includes an example invocation at module level:
+
+```bash
+python counterarg.py
+```
+
+Running or importing the module can initialize the dataset/index and execute that example. Change the local example statement only after reviewing the workflow and its costs. The counterargument function can return `None` if suitable papers or a valid response are not found.
+
+## Validation
+
+No benchmark, accuracy evaluation, or automated tests are provided. Check retrieved paper identifiers, inspect source PDFs, assess whether evidence actually contradicts the claim, and compare generated statements with the cited excerpts. This documentation review did not download the dataset or execute paid model calls.
+
+## Deployment
+
+There is no deployment configuration or application server. Use this repository as a local research experiment.
+
+## Limitations
+
+- Metadata retrieval, sentiment, stance classification, and generation each introduce uncertainty.
+- PDF extraction and network downloads can fail.
+- The script index is rebuilt in memory and is not saved for reuse.
+- Inner-product retrieval and limited text excerpts are not a complete evidence-verification method.
+
+## Attribution and license
+
+The dataset and models are supplied by their respective publishers. No standalone project license file is included; this README does not grant a new license.
