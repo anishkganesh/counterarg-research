@@ -41,8 +41,8 @@ No dependency manifest, web server, persisted FAISS index, or automated test sui
 Clone the repository and create a Python virtual environment. Activate it using the command appropriate to your shell.
 
 ```bash
-git clone https://github.com/anishkganesh/counterarg.git
-cd counterarg
+git clone https://github.com/anishkganesh/counterarg-research.git
+cd counterarg-research
 python -m venv .venv
 pip install jupyter pandas numpy faiss-cpu sentence-transformers transformers torch kaggle
 jupyter notebook counter_research.ipynb
